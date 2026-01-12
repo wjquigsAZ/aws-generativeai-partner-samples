@@ -19,7 +19,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     format="%(levelname)s | %(name)s | %(message)s",
-    level=logging.WARNING
+    level=logging.INFO
 )
 
 def get_bedrock_models(region: Optional[str] = None) -> List[str]:
@@ -145,9 +145,9 @@ async def get_bedrock_models_async(region: Optional[str] = None) -> List[str]:
         )
     ]
     logger.info(f"Found {len(active_models)} active models with inference support")
-    logger.warning("Active models found:")
+    logger.info("Active models found:")
     for model in active_models:
-        logger.warning(f"  - {model.get('modelId')}")
+        logger.info(f"  - {model.get('modelId')}")
     
     # Define a minimal tool config for testing
     test_tool_config = {

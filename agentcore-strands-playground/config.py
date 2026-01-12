@@ -3,16 +3,18 @@
 Configuration script to create AWS resources for AgentCore Strands Playground
 
 Usage:
-    ./config.py                            # Create all resources (includes Gateway permissions)
-    ./config.py --all                      # Create all resources (includes Gateway permissions)
+    ./config.py                            # Create basic resources (Lambda, IAM, Gateway - no Cognito)
+    ./config.py --all                      # Create basic resources (Lambda, IAM, Gateway - no Cognito)
     ./config.py --lambda                   # Create only Lambda function
     ./config.py --iam                      # Create only IAM roles
-    ./config.py --cognito                  # Create only Cognito resources
+    ./config.py --cognito                  # Create only Cognito resources (authentication disabled by default)
     ./config.py --gateway                  # Create only Gateway and targets
     ./config.py --lambda --iam             # Create Lambda and IAM roles
     ./config.py --add-gateway-permission   # Manually add InvokeGateway permission (auto-added with --all)
     ./config.py --test                     # Test existing configuration
     ./config.py --help                     # Show this help message
+    
+Note: Cognito authentication is disabled by default. Use --cognito explicitly if you need it.
 """
 
 import os
@@ -29,7 +31,7 @@ import boto3
 import time
 from botocore.exceptions import ClientError
 
-def create_resources(create_lambda=True, create_iam=True, create_cognito=True, create_gateway=True):
+def create_resources(create_lambda=True, create_iam=True, create_cognito=False, create_gateway=True):
     """Create AWS resources for AgentCore Strands Playground
     
     Args:
@@ -655,10 +657,11 @@ if __name__ == "__main__":
         print()
         
         # Create resources based on flags
+        # Note: Cognito is only created when explicitly requested with --cognito
         resources = create_resources(
             create_lambda=args.all or args.lambda_func,
             create_iam=args.all or args.iam,
-            create_cognito=args.all or args.cognito,
+            create_cognito=args.cognito,  # Only create when explicitly requested
             create_gateway=args.all or args.gateway
         )
         

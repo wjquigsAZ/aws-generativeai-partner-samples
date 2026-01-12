@@ -5,7 +5,7 @@ Read [this document](./agentcore_playground.md) for background.
 ## Features
 
 - **Dynamic tool and model selection:** change available tools and model on the fly
-- **Authentication:** uses Cognito to authenticate user to the agent
+- **No Authentication Required:** runs without authentication by default (optional Cognito support available)
 - **Real-time Chat Interface**: Interactive chat with deployed AgentCore agents
 - **Agent Discovery**: Automatically discover and select from available agents in your AWS account
 - **Version Management**: Choose specific versions of your deployed agents
@@ -25,7 +25,7 @@ Read [this document](./agentcore_playground.md) for background.
 - AWS CLI configured with appropriate credentials
 - Access to Amazon Bedrock AgentCore service
 - Deployed agents on Bedrock AgentCore Runtime
-- Optional: Cognito [user pool](https://github.com/awslabs/amazon-bedrock-agentcore-samples/blob/main/01-tutorials/03-AgentCore-identity/03-Inbound%20Auth%20example/inbound_auth_runtime_with_strands_and_bedrock_models.ipynb./COGNITO_SETUP.m)
+- Optional: Cognito user pool (only if you need authentication - disabled by default)
 
 ### Required AWS Permissions
 
@@ -51,31 +51,31 @@ Your AWS credentials need the following permissions:
 
 ## Deploy the Example Agent
 
-1. **Optional: Set up Cognito pool**
-
-  run 'config.py' to configure a Cognito pool automatically. The discovery URL and client ID will be saved in .env file
-
-2. **Configure the agent**:
+1. **Configure the agent**:
 ```bash
 cd agentcore_agent
 uv run agentcore configure -e runtime_agent.py
 ```
-Select default options; optionally configure your Cognito pool as OAuth authorizer (or other OAuth provider), and configure Long Term Memory under Memory Configuration.
+Select default options and configure Long Term Memory under Memory Configuration. Authentication is disabled by default.
 
 2. **Deploy to AgentCore Runtime:**
 ```bash
 uv run agentcore launch
 cd ..
 ```
+
+3. **Optional: Set up Cognito pool (only if you need authentication)**
+   
+   If you need authentication, run 'config.py --cognito' to configure a Cognito pool automatically. Then use '--auth' when running the app.
 ## Running the Application
 
 ### Using uv (recommended)
 ```bash
-uv run streamlit run app.py [-- --auth | --noauth]
+uv run streamlit run app.py
 ```
 The application will start and be available at `http://localhost:8501`.
 
-If you configured a Cognito pool for authentication, the app will automatically look in 1) .env file and 2) ./agentcore_agent/.bedrock_agentcore.yaml to find Cognito configuration variables. If it finds a Cognito configuration, or if you specify '--auth' on the command line, it will default to using authentication when invoking the agent. If it does not find Cognito configuration, or if you specify '--noauth' on the command line, it will not use any authentication when invoking the agent.
+**Authentication is disabled by default.** The app runs without requiring any login or authentication. If you need authentication, use the `--auth` flag and ensure you have configured Cognito resources using `python config.py --cognito`.
 
 Note: many of the Strands built-in tools require permissions that are not automatically granted to the execution role, because the AgentCore Starter Toolkit follows security best practices and grants least privilege access. For example, the prompt "use aws to list s3 buckets" will fail even if the 'use_aws' tool is configured in the Tool Selection panel because the AgentCore runtime role does not have appropriate permissions. To grant permissions, determine the role name (available in ./agentcore_agent/.bedrock_agentcore.yaml) and attach relevant policies to the role. For example:
 
@@ -105,8 +105,10 @@ Optional:
 ```
 agentcore-strands-playground/
 ├── app.py                           # Main Streamlit application
-├── auth_utils.py                    # Cognito authentication utilities
+├── auth_utils.py.bak                # Cognito authentication utilities (backup - auth disabled)
 ├── br_utils.py                      # Bedrock utilities (model discovery)
+├── config.py                        # AWS resource configuration script
+├── cleanup.py                       # AWS resource cleanup script
 ├── dotenv.example                   # Example environment variables
 ├── pyproject.toml                   # Project dependencies (uv)
 ├── README.md                        # This file

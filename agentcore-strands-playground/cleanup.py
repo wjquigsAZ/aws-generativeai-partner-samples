@@ -4,14 +4,16 @@ Cleanup script to delete resources created by config.py
 Reads resource identifiers from .env file
 
 Usage:
-    ./cleanup.py                    # Delete all resources (with confirmation)
-    ./cleanup.py --all              # Delete all resources (with confirmation)
+    ./cleanup.py                    # Delete basic resources (Gateway, Lambda, IAM - no Cognito)
+    ./cleanup.py --all              # Delete basic resources (Gateway, Lambda, IAM - no Cognito)
     ./cleanup.py --gateway          # Delete only Gateway and targets
     ./cleanup.py --lambda           # Delete only Lambda function
     ./cleanup.py --iam              # Delete only IAM roles
-    ./cleanup.py --cognito          # Delete only Cognito resources
+    ./cleanup.py --cognito          # Delete only Cognito resources (authentication disabled by default)
     ./cleanup.py --gateway --lambda # Delete Gateway and Lambda
     ./cleanup.py --help             # Show this help message
+
+Note: Cognito resources are not deleted by default. Use --cognito explicitly if needed.
 """
 
 import os
@@ -319,7 +321,7 @@ def main():
     """Main cleanup function"""
     args = parse_arguments()
     
-    # If no specific flags, default to --all
+    # If no specific flags, default to --all (excluding Cognito)
     if not any([args.all, args.gateway, args.lambda_func, args.iam, args.cognito]):
         args.all = True
     
@@ -347,7 +349,7 @@ def main():
         resources_to_delete.append(f"    └─ {LAMBDA_IAM_ROLE_NAME}")
         resources_to_delete.append(f"    └─ {GATEWAY_IAM_ROLE_NAME}")
     
-    if args.all or args.cognito:
+    if args.cognito:  # Only show Cognito when explicitly requested
         resources_to_delete.append(f"  ✓ Cognito user pool: {COGNITO_POOL_NAME} (ID: {COGNITO_POOL_ID or 'will search'})")
         resources_to_delete.append(f"    └─ App client: {CLIENT_NAME} (ID: {CLIENT_ID or 'N/A'})")
         resources_to_delete.append(f"    └─ Resource server: {RESOURCE_SERVER_ID}")
@@ -382,7 +384,7 @@ def main():
     if args.all or args.iam:
         delete_iam_roles()
     
-    if args.all or args.cognito:
+    if args.cognito:  # Only delete when explicitly requested
         delete_cognito_resources()
     
     print("\n" + "=" * 60)
@@ -397,7 +399,7 @@ def main():
         print("  ✓ Lambda function")
     if args.all or args.iam:
         print("  ✓ IAM roles")
-    if args.all or args.cognito:
+    if args.cognito:  # Only show when explicitly requested
         print("  ✓ Cognito resources")
 
 if __name__ == "__main__":

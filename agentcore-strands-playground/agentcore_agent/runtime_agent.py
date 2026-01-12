@@ -61,7 +61,8 @@ TOP_P = float(os.getenv('STRANDS_TOP_P', '0.9'))
 MEMORY_ID = os.getenv('BEDROCK_AGENTCORE_MEMORY_ID')
 logger.debug(f"Configured MEMORY_ID: {MEMORY_ID}")
 MEMORY_NAMESPACE = os.getenv('BEDROCK_AGENTCORE_MEMORY_NAME')
-ENABLE_AUTH = os.getenv('ENABLE_AUTH', 'true').lower() == 'true'
+# Authentication is disabled by default in this playground
+ENABLE_AUTH = False
 
 # define a sample tool for web search
 @tool

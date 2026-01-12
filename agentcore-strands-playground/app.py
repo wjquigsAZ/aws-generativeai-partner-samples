@@ -16,54 +16,16 @@ from br_utils import get_bedrock_models
 load_dotenv()
 
 logger = get_logger(__name__)
-logger.setLevel("INFO")
+logger.setLevel("DEBUG")
 
-# Check if authentication should be enabled based on COGNITO_DISCOVERY_URL
-# Priority: 1) .env file, 2) .bedrock_agentcore.yaml file
-cognito_discovery_url = os.getenv('COGNITO_DISCOVERY_URL', '').strip()
-
-# If not in .env, try to read from .bedrock_agentcore.yaml
-# This is somewhat brittle, since it depends on the agent being in the "right" directory
-if not cognito_discovery_url:
-    try:
-        yaml_path = 'agentcore_agent/.bedrock_agentcore.yaml'
-        if os.path.exists(yaml_path):
-            with open(yaml_path, 'r') as f:
-                config = yaml.safe_load(f)
-                # Navigate to the nested discoveryUrl in authorizer_configuration
-                agents = config.get('agents', {})
-                default_agent = config.get('default_agent', '')
-                if default_agent and default_agent in agents:
-                    agent_config = agents[default_agent]
-                    auth_config = agent_config.get('authorizer_configuration', {})
-                    jwt_config = auth_config.get('customJWTAuthorizer', {})
-                    cognito_discovery_url = jwt_config.get('discoveryUrl', '').strip()
-                    if cognito_discovery_url:
-                        logger.info(f"Using COGNITO_DISCOVERY_URL from {yaml_path}: {cognito_discovery_url}")
-                    else:
-                        logger.info("No Cognito discovery url found.")
-    except Exception as e:
-        logger.warning(f"Could not read COGNITO_DISCOVERY_URL from YAML: {e}")
-
-ENABLE_AUTH = bool(cognito_discovery_url)
-
-# Check for --auth or --noauth command-line arguments to override
-if '--auth' in sys.argv:
-    ENABLE_AUTH = True
-elif '--noauth' in sys.argv:
-    ENABLE_AUTH = False
-
-# Import authentication module OR set auth variables to None
-if ENABLE_AUTH:
-    from auth_utils import require_authentication
-    logger.info(F"Using authentication: {cognito_discovery_url}")
-else:
-    st.session_state.authenticated = False
-    st.session_state.access_token = None
-    st.session_state.id_token = None
-    st.session_state.refresh_token = None
-    st.session_state.username = 'default_user'
-    logger.info("Not using authentication.")
+# Using default AgentCore IAM auth
+# Set default session variables
+st.session_state.authenticated = False
+st.session_state.access_token = None
+st.session_state.id_token = None
+st.session_state.refresh_token = None
+st.session_state.username = 'default_user'
+logger.info("Using AgentCore IAM authentication")
 
 STRANDS_SYSTEM_PROMPT = os.getenv('STRANDS_SYSTEM_PROMPT', """You are a helpful assistant powered by Strands. Strands Agents is a simple-to-use, code-first framework for building agents - open source by AWS. The user has the ability to modify your set of built-in tools. Every time your tool set is changed, you can propose a new set of tasks that you can do.""")
 
@@ -233,7 +195,7 @@ def fetch_sessions(region: str, memory_id: str, actor_id: str) -> List[Dict]:
             # Add sessions from this page
             session_summaries = response.get("sessionSummaries", [])
             sessions.extend(session_summaries)
-            #logger.info(f"Page {iteration + 1}: Retrieved {len(session_summaries)} sessions (total: {len(sessions)})")
+            logger.debug(f"Page {iteration + 1}: Retrieved {len(session_summaries)} sessions (total: {len(sessions)})")
             # Check for more pages
             next_token = response.get("nextToken")
             if not next_token:
@@ -337,185 +299,9 @@ def return_metrics(mode: str, usage_data=None, error_msg: str = None, **kwargs):
     
     return metrics
     
-def invoke_agentcore_runtime_auth(message: str, agent_arn: str, region: str, access_token: str, session_id: str, username: str = None, memory_id: str = None) -> Dict:
+def invoke_agentcore_runtime(message: str, agent_arn: str, region: str, session_id: str, username: str = None, memory_id: str = None) -> Dict:
     """
-    Invoke AgentCore runtime using HTTP requests with bearer token authentication
-    We need to use 'requests' because boto3 can't handle auth tokens (yet)
-    """
-    try:
-        # URL encode the agent ARN
-        escaped_agent_arn = urllib.parse.quote(agent_arn, safe='')
-        
-        # Construct the URL
-        url = f"https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{escaped_agent_arn}/invocations?qualifier=DEFAULT"
-        
-        # Set up headers
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "X-Amzn-Trace-Id": f"streamlit-session-{session_id[:8] if session_id else 'unknown'}",
-            "Content-Type": "application/json",
-        }
-        # Add session ID header if provided
-        if session_id:
-            headers["X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"] = session_id
-        
-        # Prepare payload
-        payload_data = {"prompt": message}
-        if session_id:
-            payload_data["sessionId"] = session_id
-        if username:
-            payload_data["username"] = username
-        
-        # Add model_id to payload - get from session state or use STRANDS_MODEL_ID from .env
-        model_id = st.session_state.get('selected_bedrock_model_id', os.getenv('STRANDS_MODEL_ID', 'us.amazon.nova-pro-v1:0'))
-        logger.info(f"[AUTH] Using model_id: {model_id} (session_state: {st.session_state.get('selected_bedrock_model_id')}, .env: {os.getenv('STRANDS_MODEL_ID')})")
-        if model_id:
-            payload_data["model_id"] = model_id
-        
-        # Add memory_id to payload if provided
-        if memory_id:
-            payload_data["memory_id"] = memory_id
-        
-        # Add selected tools to payload
-        selected_tools = st.session_state.get('selected_tools', DEFAULT_TOOLS)
-        if selected_tools:
-            payload_data["tools"] = selected_tools
-        
-        payload_data["memoryDebug"] = True
-        
-        # Make the HTTP POST request
-        invoke_response = requests.post(
-            url,
-            headers=headers,
-            data=json.dumps(payload_data),
-            timeout=300  # 5 minute timeout
-        )
-        
-        # Handle response based on status code
-        if invoke_response.status_code == 200:
-            try:
-                response_data = invoke_response.json()
-                
-                # Check if response_data is a string (double-encoded JSON)
-                if isinstance(response_data, str):
-                    try:
-                        response_data = json.loads(response_data)
-                    except json.JSONDecodeError:
-                        # If it fails, treat as plain text
-                        pass
-                
-                # Extract response text
-                if isinstance(response_data, dict):
-                    response_text = response_data.get('response', str(response_data))
-                    
-                    # Extract usage metrics if available
-                    token_usage = get_token_usage(response_data.get('usage'))
-                else:
-                    response_text = str(response_data)
-                    token_usage = get_token_usage()
-                    response_data = {}  # Set to empty dict if not a dict
-                
-            except json.JSONDecodeError:
-                # If response is not JSON, use the text as-is
-                response_text = invoke_response.text
-                token_usage = get_token_usage()
-                response_data = {}  # Set to empty dict to prevent AttributeError
-            
-            # Include additional metrics if available (only if response_data is a dict)
-            additional_metrics = response_data.get('metrics', {}) if isinstance(response_data, dict) else {}
-            
-            return {
-                'success': True,
-                'response': response_text,
-                'metrics': return_metrics(
-                    mode='AgentCore Runtime (requests + Bearer Token)',
-                    usage_data=token_usage,
-                    model_id=response_data.get('model_id', model_id),
-                    agent_arn=agent_arn,
-                    bearer_token_used=bool(access_token),
-                    latency_ms=additional_metrics.get('latencyMs'),
-                    additional_metrics=additional_metrics
-                )
-            }
-            
-        elif invoke_response.status_code >= 400:
-            # Error response
-            try:
-                error_data = invoke_response.json()
-                error_msg = json.dumps(error_data, indent=2)
-            except json.JSONDecodeError:
-                error_msg = invoke_response.text
-            
-            st.error(f"Error Response ({invoke_response.status_code}): {error_msg}")
-            
-            return {
-                'success': False,
-                'error': error_msg,
-                'response': f"Sorry, I encountered an error ({invoke_response.status_code}): {error_msg}",
-                'metrics': return_metrics(
-                    mode='AgentCore Runtime (Error)',
-                    error_msg=error_msg,
-                    status_code=invoke_response.status_code
-                )
-            }
-        else:
-            # Unexpected status code
-            error_msg = f"Unexpected status code: {invoke_response.status_code}"
-            response_text = invoke_response.text[:500]
-            
-            st.error(f"{error_msg}\nResponse: {response_text}")
-            
-            return {
-                'success': False,
-                'error': error_msg,
-                'response': f"Sorry, I encountered an unexpected error: {error_msg}",
-                'metrics': return_metrics(
-                    mode='AgentCore Runtime (Error)',
-                    error_msg=error_msg,
-                    status_code=invoke_response.status_code
-                )
-            }
-        
-    except requests.exceptions.Timeout:
-        error_msg = "Request timed out after 5 minutes"
-        st.error(f"Error invoking AgentCore runtime: {error_msg}")
-        return {
-            'success': False,
-            'error': error_msg,
-            'response': f"Sorry, the request timed out: {error_msg}",
-            'metrics': return_metrics(
-                mode='AgentCore Runtime (Timeout)',
-                error_msg=error_msg
-            )
-        }
-    except requests.exceptions.RequestException as e:
-        error_msg = f"Request error: {str(e)}"
-        st.error(f"Error invoking AgentCore runtime: {error_msg}")
-        return {
-            'success': False,
-            'error': error_msg,
-            'response': f"Sorry, I encountered a network error: {error_msg}",
-            'metrics': return_metrics(
-                mode='AgentCore Runtime (Network Error)',
-                error_msg=error_msg
-            )
-        }
-    except Exception as e:
-        error_msg = str(e)
-        st.error(f"Error invoking AgentCore runtime: {error_msg}")
-        return {
-            'success': False,
-            'error': error_msg,
-            'response': f"Sorry, I encountered an error: {error_msg}",
-            'metrics': return_metrics(
-                mode='AgentCore Runtime (Error)',
-                error_msg=error_msg
-            )
-        }
-
-def invoke_agentcore_runtime_no_auth(message: str, agent_arn: str, region: str, session_id: str, username: str = None, memory_id: str = None) -> Dict:
-    """
-    Invoke AgentCore runtime using boto3 without authentication token
+    Invoke AgentCore runtime using boto3 with IAM authentication
     Uses standard AWS credentials (IAM role, profile, etc.)
     """
     try:
@@ -531,7 +317,7 @@ def invoke_agentcore_runtime_no_auth(message: str, agent_arn: str, region: str, 
         
         # Add model_id to payload - get from session state or use STRANDS_MODEL_ID from .env
         model_id = st.session_state.get('selected_bedrock_model_id', os.getenv('STRANDS_MODEL_ID', 'us.amazon.nova-pro-v1:0'))
-        logger.info(f"[NO-AUTH] Using model_id: {model_id} (session_state: {st.session_state.get('selected_bedrock_model_id')}, .env: {os.getenv('STRANDS_MODEL_ID')})")
+        logger.info(f"Using model_id: {model_id} (session_state: {st.session_state.get('selected_bedrock_model_id')}, .env: {os.getenv('STRANDS_MODEL_ID')})")
         if model_id:
             payload_data["model_id"] = model_id
         
@@ -763,23 +549,85 @@ def show_settings_sidebar(auth):
     
     # Settings Section (collapsible)
     with st.sidebar.expander("⚙️ Settings", expanded=True):
-        # Authentication section
-        if ENABLE_AUTH:
-            if auth.is_authenticated():
-                st.markdown("**🔐 Authentication**")
-                st.write(f"👤 **User:** {auth.get_username()}")
-                st.write(f"� **Pool:** *{auth.pool_id}")
+        # Using AgentCore IAM authentication
+        st.markdown("**🔐 Authentication**")
+        
+        # Initialize users list in session state if not exists
+        if 'existing_users' not in st.session_state:
+            st.session_state.existing_users = ['default_user']
+        
+        # Initialize current username if not exists
+        if 'username' not in st.session_state:
+            st.session_state.username = 'default_user'
+        
+        # Helper function to format user display name
+        def format_user_display(user_id):
+            """Format user ID for display in dropdown."""
+            return user_id if user_id else "Unknown User"
+        
+        # User dropdown - select from existing users
+        existing_users = st.session_state.existing_users
+        user_display_names = [format_user_display(uid) for uid in existing_users]
+        
+        # Find current user index
+        try:
+            current_index = existing_users.index(st.session_state.username)
+        except ValueError:
+            current_index = 0
+            
+        selected_user = st.selectbox(
+            "User",
+            options=user_display_names,
+            index=current_index,
+            help="Select an existing user from the dropdown"
+        )
+        
+        # Map display name back to actual user ID
+        selected_index = user_display_names.index(selected_user)
+        selected_user_id = existing_users[selected_index]
+        
+        # Update session state when user selects from dropdown
+        if selected_user_id != st.session_state.username:
+            st.session_state.username = selected_user_id
+            
+        # New user input with button
+        # Use session state to control the input value
+        if 'new_user_input' not in st.session_state:
+            st.session_state.new_user_input = ""
+            
+        new_user_id = st.text_input(
+            "New User ID",
+            value=st.session_state.new_user_input,
+            placeholder="Enter user ID...",
+            help="Type a user ID and click 'New User' to add",
+            key="new_user_id_input"
+        )
+        
+        if st.button("👤 New User", help="Add new user with the ID above"):
+            if new_user_id.strip():
+                # Add new user to the list if not already exists
+                new_user_clean = new_user_id.strip()
+                if new_user_clean not in st.session_state.existing_users:
+                    st.session_state.existing_users.append(new_user_clean)
+                    st.success(f"✅ Added new user: {new_user_clean}")
+                else:
+                    st.warning(f"⚠️ User '{new_user_clean}' already exists")
                 
-                if st.button("� Logoout", use_container_width=True):
-                    auth.logout()
-                    st.rerun()
+                # Set the new user as the selected user in both cases
+                st.session_state.username = new_user_clean
                 
-                st.markdown("---")
-        else:
-                st.markdown("**🔐 Authentication**")
-                st.write(f"👤 **User:** default_user")
+                # Clear the input box for next time
+                st.session_state.new_user_input = ""
                 
-                st.markdown("---")
+                # Clear the text input widget state
+                if "new_user_id_input" in st.session_state:
+                    del st.session_state["new_user_id_input"]
+                
+                st.rerun()
+            else:
+                st.error("❌ Please enter a valid user ID")
+                
+        st.markdown("---")
     
         # Region selection
         st.markdown("**AWS Region**")
@@ -1106,10 +954,8 @@ def show_settings_sidebar(auth):
 
 
 def main():
-    if ENABLE_AUTH:
-        auth = require_authentication()
-    else:
-        auth = None
+    # Using default AgentCore IAM auth
+    auth = None
 
     # Show Settings and Tools in sidebar
     show_settings_sidebar(auth)
@@ -1156,25 +1002,15 @@ def main():
                     # Get region from sidebar session state
                     region = st.session_state.get('selected_region', 'us-west-2')
                     
-                    if ENABLE_AUTH:
-                        agentcore_response = invoke_agentcore_runtime_auth(
-                            message=prompt,
-                            agent_arn=selected_agent_arn,
-                            region=region,
-                            access_token=st.session_state.access_token,
-                            session_id=st.session_state.runtime_session_id,
-                            username=st.session_state.get('username'),
-                            memory_id=st.session_state.get('selected_memory_id')
-                        )
-                    else:
-                        agentcore_response = invoke_agentcore_runtime_no_auth(
-                            message=prompt,
-                            agent_arn=selected_agent_arn,
-                            region=region,
-                            session_id=st.session_state.runtime_session_id,
-                            username=st.session_state.get('username'),
-                            memory_id=st.session_state.get('selected_memory_id')
-                        )
+                    # Using default AgentCore IAM auth
+                    agentcore_response = invoke_agentcore_runtime(
+                        message=prompt,
+                        agent_arn=selected_agent_arn,
+                        region=region,
+                        session_id=st.session_state.runtime_session_id,
+                        username=st.session_state.get('username'),
+                        memory_id=st.session_state.get('selected_memory_id')
+                    )
                     logger.info(f"AgentCore Response - Success: {agentcore_response.get('success')}, Response Length: {len(agentcore_response.get('response', ''))}, Metrics: {agentcore_response.get('metrics')}")
                     logger.info(f"AgentCore Response Text: {agentcore_response.get('response', '')}")
                     if agentcore_response['success']:
@@ -1195,8 +1031,6 @@ def main():
             else:
                 if not selected_agent_arn:
                     st.warning("⚠️ Please select an AgentCore agent to continue.")
-                else:
-                    st.warning("⚠️ Authentication required. Please log in again.")
             
     # Panel 2: Metrics Summary
     with col2:
