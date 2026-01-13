@@ -5,7 +5,6 @@ Read [this document](./agentcore_playground.md) for background.
 ## Features
 
 - **Dynamic tool and model selection:** change available tools and model on the fly
-- **No Authentication Required:** runs without authentication by default (optional Cognito support available)
 - **Real-time Chat Interface**: Interactive chat with deployed AgentCore agents
 - **Agent Discovery**: Automatically discover and select from available agents in your AWS account
 - **Version Management**: Choose specific versions of your deployed agents
@@ -75,9 +74,7 @@ uv run streamlit run app.py
 ```
 The application will start and be available at `http://localhost:8501`.
 
-**Authentication is disabled by default.** The app runs without requiring any login or authentication. If you need authentication, use the `--auth` flag and ensure you have configured Cognito resources using `python config.py --cognito`.
-
-Note: many of the Strands built-in tools require permissions that are not automatically granted to the execution role, because the AgentCore Starter Toolkit follows security best practices and grants least privilege access. For example, the prompt "use aws to list s3 buckets" will fail even if the 'use_aws' tool is configured in the Tool Selection panel because the AgentCore runtime role does not have appropriate permissions. To grant permissions, determine the role name (available in ./agentcore_agent/.bedrock_agentcore.yaml) and attach relevant policies to the role. For example:
+It can be useful to add policies to the IAM role used by the agent. For example, to grant permission to the "use_aws" tool to read S3, attach the AmazonS3ReadOnlyAccess policy:
 
 ```bash
 aws iam attach-role-policy \
@@ -105,7 +102,6 @@ Optional:
 ```
 agentcore-strands-playground/
 ├── app.py                           # Main Streamlit application
-├── auth_utils.py.bak                # Cognito authentication utilities (backup - auth disabled)
 ├── br_utils.py                      # Bedrock utilities (model discovery)
 ├── config.py                        # AWS resource configuration script
 ├── cleanup.py                       # AWS resource cleanup script
