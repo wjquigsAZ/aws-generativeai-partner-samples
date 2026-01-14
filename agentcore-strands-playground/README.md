@@ -74,6 +74,8 @@ uv run streamlit run app.py
 ```
 The application will start and be available at `http://localhost:8501`.
 
+Note: Streamlit apps run with an unencrypted, unauthenticated endpoint. Do not run the app in a public subnet in your VPC.
+
 It can be useful to add policies to the IAM role used by the agent. For example, to grant permission to the "use_aws" tool to read S3, attach the AmazonS3ReadOnlyAccess policy:
 
 ```bash
