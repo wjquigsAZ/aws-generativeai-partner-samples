@@ -9,7 +9,6 @@ import logging
 import sys
 import boto3
 from typing import Dict, List
-from pathlib import Path
 from dotenv import load_dotenv
 from duckduckgo_search import DDGS
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -87,82 +86,6 @@ logger.debug(f"Configured MEMORY_ID: {MEMORY_ID}")
 MEMORY_NAMESPACE = os.getenv('BEDROCK_AGENTCORE_MEMORY_NAME')
 # Authentication is disabled by default in this playground
 ENABLE_AUTH = False
-
-# Model cache file path
-TOOL_MODELS_CACHE_FILE = Path(__file__).parent / "tool_models.json"
-
-def load_cached_tool_models() -> List[str]:
-    """
-    Load cached list of models that support tools from JSON file.
-    
-    Returns:
-        List of model IDs that support tools, or empty list if cache doesn't exist.
-    """
-    if TOOL_MODELS_CACHE_FILE.exists():
-        try:
-            with open(TOOL_MODELS_CACHE_FILE, 'r') as f:
-                data = json.load(f)
-                models = data.get('models', [])
-                region = data.get('region', 'unknown')
-                logger.info(f"Loaded {len(models)} cached tool-supporting models from {TOOL_MODELS_CACHE_FILE} (region: {region})")
-                return models
-        except Exception as e:
-            logger.warning(f"Failed to load cached models from {TOOL_MODELS_CACHE_FILE}: {e}")
-            return []
-    else:
-        logger.info(f"No cached models file found at {TOOL_MODELS_CACHE_FILE}")
-        return []
-
-def save_tool_models_cache(models: List[str], region: str):
-    """
-    Save list of models that support tools to JSON file.
-    
-    Args:
-        models: List of model IDs that support tools
-        region: AWS region where models were queried
-    """
-    try:
-        cache_data = {
-            'region': region,
-            'models': models,
-            'cached_at': str(Path(__file__).stat().st_mtime)
-        }
-        with open(TOOL_MODELS_CACHE_FILE, 'w') as f:
-            json.dump(cache_data, f, indent=2)
-        logger.info(f"Saved {len(models)} tool-supporting models to cache: {TOOL_MODELS_CACHE_FILE}")
-    except Exception as e:
-        logger.error(f"Failed to save models cache to {TOOL_MODELS_CACHE_FILE}: {e}")
-
-def get_tool_supporting_models() -> List[str]:
-    """
-    Get list of models that support tools, using cache if available.
-    Expects tool_models.json to exist (created during deployment).
-    If cache doesn't exist, queries Bedrock and creates cache as fallback.
-    
-    Returns:
-        List of model IDs that support tools
-    """
-    # Check for cache file first (should exist from deployment)
-    cached_models = load_cached_tool_models()
-    if cached_models:
-        return cached_models
-    
-    # Fallback: Cache doesn't exist, query Bedrock and create it
-    logger.warning(f"tool_models.json not found at {TOOL_MODELS_CACHE_FILE}. Querying Bedrock as fallback...")
-    logger.warning("Consider running generate_tool_models_cache.py during deployment to pre-generate this file.")
-    try:
-        from br_utils import get_bedrock_models
-        models = get_bedrock_models(REGION)
-        
-        # Save to cache for future use
-        if models:
-            save_tool_models_cache(models, REGION)
-            logger.info("Created tool_models.json cache file")
-        
-        return models
-    except Exception as e:
-        logger.error(f"Failed to query Bedrock models: {e}")
-        return []
 
 # define a sample tool for web search
 @tool
