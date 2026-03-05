@@ -47,6 +47,10 @@ Your AWS credentials need the following permissions:
    ```bash
    uv sync
    ```
+3. **Activate the venv**:
+   ```bash
+   source .venv/bin/activate
+   ```
 
 ## Deploy the Example Agent
 
