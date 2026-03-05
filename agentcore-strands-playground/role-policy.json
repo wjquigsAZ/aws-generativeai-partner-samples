@@ -2,6 +2,20 @@
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "BedrockAgentCoreMemoryPermissions",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:ListEvents",
+        "bedrock-agentcore:GetMemory",
+        "bedrock-agentcore:QueryMemory",
+        "bedrock-agentcore:PutMemory",
+        "bedrock-agentcore:DeleteMemory"
+      ],
+      "Resource": [
+        "arn:aws:bedrock-agentcore:*:*:memory/*"
+      ]
+    },
+    {
       "Sid": "TransactionSearchXRayPermissions",
       "Effect": "Allow",
       "Action": [
