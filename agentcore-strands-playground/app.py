@@ -654,10 +654,9 @@ def show_settings_sidebar(auth):
         # Cache key for models based on region
         models_cache_key = f"bedrock_tool_models_{region}"
         if models_cache_key not in st.session_state or st.session_state.get('last_model_region') != region:
-            with st.spinner("Loading Bedrock models..."):
-                available_models = get_bedrock_models()
-                st.session_state[models_cache_key] = available_models
-                st.session_state.last_model_region = region
+            available_models = get_bedrock_models()
+            st.session_state[models_cache_key] = available_models
+            st.session_state.last_model_region = region
         else:
             available_models = st.session_state[models_cache_key]
         
