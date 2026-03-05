@@ -7,4 +7,9 @@ uv.lock
 agentcore_agent/*
 !agentcore_agent/runtime_agent.py
 !agentcore_agent/requirements.txt
+arize_agent/.bedrock_agentcore.yaml
+arize_agent/.bedrock_agentcore/
+arize_agent/.dockerignore
+arize_agent/Dockerfile
+arize_agent/configure.py
 docs/
